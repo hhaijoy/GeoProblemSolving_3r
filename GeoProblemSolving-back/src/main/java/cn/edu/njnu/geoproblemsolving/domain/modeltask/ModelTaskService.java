@@ -4,6 +4,8 @@ package cn.edu.njnu.geoproblemsolving.domain.modeltask;
 
 import cn.edu.njnu.geoproblemsolving.Enums.ResultEnum;
 import cn.edu.njnu.geoproblemsolving.Exception.MyException;
+import cn.edu.njnu.geoproblemsolving.Utils.ResultUtils;
+import cn.edu.njnu.geoproblemsolving.domain.support.JsonResult;
 import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
@@ -32,33 +34,8 @@ public class ModelTaskService {
 //    @Autowired
 //    ModelItemDao modelItemDao;
 
-//    @Value("${managerServerIpAndPort}")
-//    private String managerServer;
-
     @Value("${managerServerIpAndPort}")
     private String managerServerIpAndPort;
-
-    @Resource
-    private MongoTemplate mongoTemplate;
-//    public JSONArray getAllModel(){
-//        String urlStr = "http://" + managerServerIpAndPort + "/GeoModeling/taskNode/getAllServices";//获得服务容器中的所有模型
-//        RestTemplate restTemplate = new RestTemplate();
-//        ResponseEntity<JSONObject> jsonObjectResponseEntity = restTemplate.getForEntity(urlStr,  JSONObject.class);
-//        if (!jsonObjectResponseEntity.getStatusCode().is2xxSuccessful()) {
-//            throw new MyException(ResultEnum.ERROR);
-//        }
-//        JSONArray result = jsonObjectResponseEntity.getBody().getJSONArray("data");
-//
-//        ModelItemDaoImpl modelItemDao = new ModelItemDaoImpl(mongoTemplate);
-//        JSONArray modelList = new JSONArray();
-//        for (int i = 0; i < result.size(); i++) {
-//            String modelPid = result.getString(i);
-//            Object computableModel = modelItemDao.readComputableModel(modelPid);
-//            modelList.add(computableModel);
-//        }
-//
-//        return modelList;
-//    }
 
     public JSONObject getComputeModel(String doi) {//根据pid.md5获得
         RestTemplate restTemplate = new RestTemplate();
@@ -69,17 +46,10 @@ public class ModelTaskService {
             throw new MyException(ResultEnum.ERROR);
         }
         JSONObject result = jsonObjectResponseEntity.getBody().getJSONObject("data");
-
-        String md5 = result.getString("md5");
-        String modelname = result.getString("name");
-//        String mdl = result.getString("mdl");
-        JSONObject mdlJson = JSON.parseObject(JSONObject.toJSONString(result.get("mdlJson")));
-        JSONObject behavior = mdlJson.getJSONArray("ModelClass").getJSONObject(0).getJSONArray("Behavior").getJSONObject(0).getJSONArray("StateGroup").getJSONObject(0);
-        JSONObject result2 = JSON.parseObject(JSONObject.toJSONString(behavior));
         return result;
     }
 
-    public JSONObject createTask(String pid ,String userId) {
+    public JSONObject createTask(String pid, String userId) {
         // 获得任务服务器
         RestTemplate restTemplate = new RestTemplate();
         String urlStr = "http://" + managerServerIpAndPort + "/GeoModeling/taskNode/getServiceTask/" + pid; ////Step0:根据MD5获取可用的任务服务器
@@ -92,7 +62,6 @@ public class ModelTaskService {
         String ip = result.getString("host");
         String port = result.getString("port");
 
-//        Map<String, Object> createTaskJson = new HashMap<>();
         JSONObject initTaskJson = new JSONObject();
         initTaskJson.put("ip", ip);
         initTaskJson.put("port", port);
@@ -131,16 +100,16 @@ public class ModelTaskService {
         return result;
     }
 
-    public String upload(File file) {
+    public String upload(File file,String userId) {
         FileSystemResource resource = new FileSystemResource(file);      //临时文件
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         form.add("serverNode", "china");
         form.add("userId", 2);
         form.add("ogmsdata", resource);
-        form.add("name", "zzyTest");
-        form.add("origination","GeoProblemSolving");
+        form.add("name", userId);
+        form.add("origination", "GeoProblemSolving_3r");
 
-     String urlStr = "http://111.229.14.128:8899/data";
+        String urlStr = "http://221.226.60.2:8082/data";
         RestTemplate restTemplate = new RestTemplate();
         ResponseEntity<JSONObject> jsonObjectResponseEntity = restTemplate.postForEntity(urlStr, form, JSONObject.class);
         if (!jsonObjectResponseEntity.getStatusCode().is2xxSuccessful()) {
@@ -151,25 +120,25 @@ public class ModelTaskService {
         return urlResult;
     }
 
-    public Object uploadFileForm(Collection<Part> parts) throws IOException {
+    public String uploadFileForm(Collection<Part> parts , String userId) throws IOException {
         MultiValueMap<String, Object> form = new LinkedMultiValueMap<>();
         for (Part part : parts) {
             String header = part.getHeader("Content-Disposition");
-            String filename2 = header.substring(header.indexOf("filename=\"") + 10,header.lastIndexOf("\""));//filename=" (整个字符串长度为10，所以要加10)
+            String filename2 = header.substring(header.indexOf("filename=\"") + 10, header.lastIndexOf("\""));//filename=" (整个字符串长度为10，所以要加10)
             // 获取文件名
-            String fileName = part.getName();
+//            String fileName = part.getName();
             //  获取文件后缀名
-            String suffix ="." + FilenameUtils.getExtension(filename2);
-            File file=File.createTempFile(part.getName(),suffix);//创建临时文件
-            FileUtils.copyInputStreamToFile(part.getInputStream(),file);
-            FileSystemResource fileSystemResource=new FileSystemResource(file);
-            form.add("ogmsdata",fileSystemResource);
+            String suffix = "." + FilenameUtils.getExtension(filename2);
+            File file = File.createTempFile(part.getName(), suffix);//创建临时文件
+            FileUtils.copyInputStreamToFile(part.getInputStream(), file);
+            FileSystemResource fileSystemResource = new FileSystemResource(file);
+            form.add("ogmsdata", fileSystemResource);
         }
 
         form.add("serverNode", "china");
         form.add("userId", "2");
-        form.add("name", "");
-        form.add("origination","GeoProblemSolving");
+        form.add("name", userId);
+        form.add("origination", "GeoProblemSolving");
 
         String urlStr = "http://111.229.14.128:8899/data";
         RestTemplate restTemplate = new RestTemplate();
@@ -182,26 +151,7 @@ public class ModelTaskService {
         return resultId;
     }
 
-//    public JSONObject slefInvoke(JSONObject obj) {
-//        //传入task在初始化页面时已经创建了Task 不需要再创建且获得了上传数据的URL
-//        JSONObject invokeBody = new JSONObject();
-//        JSONObject modelInstance =  obj.getJSONObject("modelItem");
-//
-//        modelItemDao.updateComputableModel(modelInstance);//更新数据库
-//
-//        invokeBody.put("inputs", getInvokeItem(modelInstance));//上传数据的 inputs数组
-//        invokeBody.put("ip", obj.getString("ip"));
-//        invokeBody.put("port", obj.getString("port"));
-//        invokeBody.put("pid", obj.getString("pid"));
-//        invokeBody.put("username", "testzzy");
-//        String tid = invoke(invokeBody);
-//
-//        JSONObject refreshBody = new JSONObject();
-//        refreshBody.put("tid", tid);
-//        refreshBody.put("ip",obj.getString("ip"));
-//        refreshBody.put("port", obj.getString("port"));
-//        return refresh(refreshBody);
-//    }
+
 
     public ArrayList<Object> getInvokeItem(JSONObject obj) {
         ArrayList<Object> inputList = new ArrayList<>();
@@ -211,7 +161,7 @@ public class ModelTaskService {
 
             JSONArray eventList = state.getJSONArray("eventList");
             for (int j = 0; j < eventList.size(); j++) {
-                if(eventList.getJSONObject(j).getString("url") != "" && eventList.getJSONObject(j).getString("url") != null ){
+                if (eventList.getJSONObject(j).getString("url") != "" && eventList.getJSONObject(j).getString("url") != null) {
                     //筛选出有url的event
                     JSONObject input = new JSONObject();
                     input.put("statename", state.getString("name"));//获得statename字段

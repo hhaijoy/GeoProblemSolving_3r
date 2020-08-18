@@ -1,14 +1,13 @@
 <template>
   <div class="main">
-    <!-- <el-button @click="getAllRecords">getAllRecords</el-button>
-    <el-button @click="loadingClose">close</el-button>-->
+    <el-button @click="createFilefromParam">test</el-button>
     <el-row class="title">
-      <el-col>{{modelIntroduction.modelName}}</el-col>
+      <el-col>{{modelIntroduction.name}}</el-col>
     </el-row>
 
     <el-row>
       <el-col :span="6">
-        <p class="des">{{modelIntroduction.modelIntro}}</p>
+        <p class="des">{{modelIntroduction.description}}</p>
       </el-col>
       <el-col :span="2" :offset="12" class="save-btn">
         <el-button plain type="primary" @click="invokeTest">
@@ -55,7 +54,7 @@
                   >{{modelInEvent.description}}</p>
                 </el-col>
 
-                <el-col :span="6" :offset="1">
+                <el-col :span="6" :offset="1" v-if="modelInEvent.datasetItem[0].type != `internal`">
                   <file
                     @newStateList="getNewStateList"
                     :fileIndex="{'stateIndex':index,'eventIndex':inEventIndex}"
@@ -64,6 +63,20 @@
                     :datasetItem="datasetItem"
                   ></file>
                 </el-col>
+              </el-row>
+              <el-row v-if="modelInEvent.datasetItem[0].type == `internal`">
+                <div v-if="filterUdxNode(modelInEvent)">
+                  <el-table border :data="filterUdxNode(modelInEvent)[0].UdxNode">
+                    <el-table-column prop="name" label="Parameter" width="180"></el-table-column>
+                    <el-table-column prop="description" label="Description" width="180"></el-table-column>
+                    <el-table-column prop="type" label="Type"></el-table-column>
+                    <el-table-column label="Value">
+                      <template slot-scope="scope">
+                        <el-input v-model="scope.row.value"></el-input>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </div>
               </el-row>
               <el-row>
                 <el-divider class="eventDivider"></el-divider>
@@ -120,26 +133,19 @@
 
 <script>
 import file from "./../dataTemplate/File";
-
+import { get, del, post, put } from "../../axios";
 export default {
-  mounted() {
-    this.getStepInfo();
-    this.getUserInfo();
-  },
-
   data() {
     return {
       doi: this.$route.params.doi,
       modelIntroduction: {},
-      stateList: {},
+      ordinaryStateList: {},
       modelInstance: {},
-      datasetItem: {},
+      datasetItem: [],
       timer: {},
       fullscreenLoading: {},
       componentDisables: false,
       inputFile: false,
-      userId: "testUserId1234",
-      stepId: "testStepId1234",
       recordList: [],
       md5: "",
       invokeForm: {
@@ -152,8 +158,8 @@ export default {
             statename: "",
             event: "",
             url: "",
-            tag: ""
-          }
+            tag: "",
+          },
         ],
         outputs: [
           {
@@ -161,18 +167,42 @@ export default {
             event: "",
             template: {
               type: "", //id|none
-              value: "" //if tyoe=none value=""
-            }
-          }
-        ]
+              value: "", //if tyoe=none value=""
+            },
+          },
+        ],
       },
       status: true,
       record: {},
       // page info
       pageParams: { pageId: "", userId: "", userName: "" },
       userInfo: {},
-      bindFileName: ""
+      bindFileName: "",
+      paramInput: "",
+      uploadFileForm: new FormData(),
+      // internalEvents: [],
     };
+  },
+  computed: {
+    stateList() {
+      let stateList = this.ordinaryStateList;
+      let datasetItem = this.datasetItem;
+      for (let i = 0; i < stateList.length; i++) {
+        let events = stateList[i].Event;
+        
+        for (let j = 0; j < events.length; j++) {
+          if (events[j].type == "response") {
+            let template = datasetItem.filter((dataset) => {
+              return (
+                dataset.name === events[j].ResponseParameter[0].datasetReference
+              );
+            });
+            events[j]["datasetItem"] = template;
+          }
+        }
+      }
+      return stateList;
+    },
   },
 
   methods: {
@@ -222,33 +252,29 @@ export default {
               "&value=" +
               this.pageParams.userId
           )
-          .then(res => {
+          .then((res) => {
             if (res.data != "Fail" && res.data != "None") {
               this.$set(this, "userInfo", res.data);
             }
           })
-          .catch(err => {});
+          .catch((err) => {});
       }
     },
 
     async init() {
       this.initLoading();
-      let { data } = await this.axios.get(
-        "/GeoProblemSolving/task/getModelBehavior/" + this.doi
+      let data = await get(
+        `/GeoProblemSolving/modelTask/getModelBehavior/${this.doi}`
       ); //获得模型所有信息
       this.md5 = data.md5;
-      this.modelIntroduction["modelName"] = data.name;
-      this.modelIntroduction["modelIntro"] = data.description;
-      this.modelIntroduction["modelAuthor"] = data.author;
-      this.modelIntroduction["modelDetail"] = data.detail;
-      this.stateList =
+      this.modelIntroduction = data;
+      this.ordinaryStateList =
         data.mdlJson.ModelClass[0].Behavior[0].StateGroup[0].States[0].State;
       this.datasetItem =
         data.mdlJson.ModelClass[0].Behavior[0].RelatedDatasets[0].DatasetItem;
-
       //预处理过程 STEP0
       let data2 = await this.axios.get(
-        `/GeoProblemSolving/task/createTask/${this.md5}/${this.pageParams.userId}`
+        `/GeoProblemSolving/modelTask/createTask/${this.md5}/${this.pageParams.userId}`
       );
       let creatTaskResult = data2.data.data;
 
@@ -289,7 +315,7 @@ export default {
               }
             } else {
               //如果是output --对应template
-              let outputTemplate = datasetItem.filter(dataset => {
+              let outputTemplate = datasetItem.filter((dataset) => {
                 return (
                   dataset.name ===
                   events[j].DispatchParameter[0].datasetReference
@@ -318,10 +344,11 @@ export default {
 
     async invokeTest() {
       this.loading();
+      this.createFilefromParam();
       //测试数据没有弄 直接运行 根据ip+id
       //invoke
       let { data } = await this.axios.post(
-        "/GeoProblemSolving/task/invoke",
+        "/GeoProblemSolving/modelTask/invoke",
         this.invokeForm
       );
       let invokeResultId = data.data;
@@ -331,6 +358,62 @@ export default {
       refreshForm["tid"] = data.data;
       this.status = false;
       this.getOutputs(refreshForm);
+    },
+
+    async createFilefromParam() {
+      let stateList = this.stateList;
+      for (let i = 0; i < stateList.length; i++) {
+        let events = stateList[i].Event;
+        for (let j = 0; j < events.length; j++) {
+          if (
+            events[j].type == "response" &&
+            events[j].datasetItem[0].hasOwnProperty("UdxDeclaration") &&
+            events[j].datasetItem[0].UdxDeclaration[0].UdxNode != ""
+          ) {
+            let content = "";
+            this.uploadFileForm = new FormData();
+
+            let udxNodeList =
+              events[j].datasetItem[0].UdxDeclaration[0].UdxNode[0].UdxNode;
+            for (let k = 0; k < udxNodeList.length; k++) {
+              content += `<XDO name="${udxNodeList[k].name}" kernelType="${udxNodeList[k].type}" value="${udxNodeList[k].value}" />`;
+            }
+
+            content = "<Dataset> " + content + " </Dataset>";
+
+            let file = new File([content], events[j].name + ".xml", {
+              type: "text/plain",
+            });
+            this.uploadFileForm.append("files", file);
+            this.createConfigFile();
+            await this.submitUpload(i, j);
+          }
+        }
+      }
+    },
+    createConfigFile() {
+      let configContent = "<UDXZip><Name>";
+      configContent += "<add value='" + file.name + "' />";
+      configContent += "</Name>";
+      // let data = event.data[0];
+      configContent += "<DataTemplate type='none'>";
+      configContent += "</DataTemplate>";
+      configContent += "</UDXZip>";
+      let configFile = new File([configContent], "config.udxcfg", {
+        type: "text/plain",
+      });
+      this.uploadFileForm.append("files", configFile);
+    },
+
+    async submitUpload(stateIndex, eventIndex) {
+      let data = await post(
+        `/GeoProblemSolving/modelTask/uploadFileForm`,
+        this.uploadFileForm
+      );
+
+      let resultId = `http://111.229.14.128:8899/data?uid=${data}`;
+      this.$set(this.stateList[stateIndex].Event[eventIndex], "url", resultId);
+      console.log(this.stateList);
     },
 
     async getOutputs(refreshForm) {
@@ -344,7 +427,7 @@ export default {
           return;
         } else {
           let { data } = await this.axios.post(
-            "/GeoProblemSolving/task/getRecord",
+            "/GeoProblemSolving/modelTask/getRecord",
             refreshForm
           );
           this.record = data.data.data;
@@ -357,7 +440,7 @@ export default {
       let outList = this.stateList;
       outList.forEach((state, index) => {
         state.Event.forEach((event, eventIndex) => {
-          outputUrl.forEach(el => {
+          outputUrl.forEach((el) => {
             if (el.statename == state.name && el.event == event.name) {
               this.$set(this.stateList[index].Event[eventIndex], "url", el.url);
             }
@@ -371,7 +454,7 @@ export default {
     },
 
     dataURItoBlob(event) {
-      this.urlToBlob(event.url, blob => {
+      this.urlToBlob(event.url, (blob) => {
         let file = new File([blob], this.bindFileName);
         let formData = new FormData();
 
@@ -384,16 +467,16 @@ export default {
 
         this.axios
           .post("/GeoProblemSolving/folder/uploadToFolder", formData)
-          .then(res => {
+          .then((res) => {
             console.log(res);
             if (res.data.uploaded != null) {
               this.$message({
                 message: "You have binded the resource Successfully!",
-                type: "success"
+                type: "success",
               });
             }
           })
-          .catch(function(err) {
+          .catch(function (err) {
             console.log(err);
           });
       });
@@ -404,7 +487,7 @@ export default {
       xhr.open("get", the_url, true);
       xhr.send();
       var that = this;
-      xhr.onreadystatechange = function() {
+      xhr.onreadystatechange = function () {
         if (this.readyState === 4) {
           let headers = xhr.getAllResponseHeaders();
           //打印文件名，这里打印的是编码（因为兼容不同语言的数据文件名字）后的，前端用unescape('xxx')去解码，解码后是对应的名字
@@ -412,7 +495,7 @@ export default {
         }
       };
 
-      xhr.onload = function() {
+      xhr.onload = function () {
         if (this.status == 200) {
           if (callback) {
             callback(this.response);
@@ -426,23 +509,48 @@ export default {
     },
 
     inEventList(state) {
-      return state.Event.filter(value => {
+      return state.Event.filter((value) => {
         return value.type === "response";
       });
     },
 
     outEventList(state) {
-      return state.Event.filter(value => {
+      return state.Event.filter((value) => {
         return value.type === "noresponse";
       });
     },
+    filterUdxNode(event) {
+      if (event.datasetItem[0].hasOwnProperty("UdxDeclaration")) {
+        let udxNode = event.datasetItem[0].UdxDeclaration[0].UdxNode;
+        return udxNode;
+      }
+    },
+
+    // internalEventList(event) {
+    //   let datasetItem = this.datasetItem;
+    //   return datasetItem.filter((dataset) => {
+    //     return (
+    //       dataset.name === event.ResponseParameter[0].datasetReference &&
+    //       dataset.type === "internal"
+    //     );
+    //   });
+    // },
+    // otherEventList(event) {
+    //   let datasetItem = this.datasetItem;
+    //   return datasetItem.filter((dataset) => {
+    //     return (
+    //       dataset.name === event.ResponseParameter[0].datasetReference &&
+    //       dataset.type === "external"
+    //     );
+    //   });
+    // },
 
     loading() {
       this.fullscreenLoading = this.$loading({
         lock: true,
         text: "Calculating",
         spinner: "el-icon-loading",
-        background: "rgba(0, 0, 0, 0.7)"
+        background: "rgba(0, 0, 0, 0.7)",
       });
     },
     initLoading() {
@@ -450,7 +558,7 @@ export default {
         lock: true,
         text: "Initialization",
         spinner: "el-icon-loading",
-        background: "rgba(0, 0, 0, 0.7)"
+        background: "rgba(0, 0, 0, 0.7)",
       });
     },
 
@@ -460,7 +568,7 @@ export default {
         {
           modelInstanceId: modelInstanceId,
           userId: this.userId,
-          stepId: this.stepId
+          stepId: this.stepId,
         }
       );
     },
@@ -489,9 +597,11 @@ export default {
         console.log("返回记录失败");
       }
       console.log(this.recordList);
-    }
+    },
   },
+
   mounted() {
+    // debugger;
     this.getStepInfo();
     this.getUserInfo();
     this.init();
@@ -501,8 +611,8 @@ export default {
     clearInterval(this.timer);
   },
   components: {
-    file
-  }
+    file,
+  },
 };
 </script>
 

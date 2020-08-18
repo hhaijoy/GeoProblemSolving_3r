@@ -2,7 +2,7 @@ package cn.edu.njnu.geoproblemsolving.domain.reproducibility.support;
 
 import cn.edu.njnu.geoproblemsolving.domain.reproducibility.context.ContextDefinition;
 import cn.edu.njnu.geoproblemsolving.domain.reproducibility.map.ConceptMap;
-import cn.edu.njnu.geoproblemsolving.domain.reproducibility.nodes.NodesBundle;
+import cn.edu.njnu.geoproblemsolving.domain.reproducibility.resource.Resource;
 import cn.edu.njnu.geoproblemsolving.domain.support.BaseEntity;
 import cn.hutool.json.JSONArray;
 import cn.hutool.json.JSONObject;
@@ -17,9 +17,13 @@ import lombok.Data;
 @Data
 public class DocumentationInfo extends BaseEntity {
     String name;
+    JSONObject creator;
+    JSONArray members;
+    String author;
+    Boolean isPublished;
     ContextDefinition contextDefinition;
+    Resource resourceCollection;
     ConceptMap conceptMap;
-    NodesBundle nodesBundle;
     String version; //版本号
 
     /**
@@ -28,9 +32,4 @@ public class DocumentationInfo extends BaseEntity {
      * members contains: userId, name, avatar, role
      * role: creator, administrator, decision-maker, researcher, stakeholder, normal member(workers...), visitor(the public)
      */
-    JSONObject creator;
-    JSONArray members;
-    String author;
-    Boolean isPublished;
-
 }
